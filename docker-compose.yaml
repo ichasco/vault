@@ -1,0 +1,73 @@
+version: '3.7'
+
+services:
+  vault:
+    image: vault
+    restart: always
+    container_name: vault
+    command: server
+    cap_add:
+      - IPC_LOCK
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      VAULT_LOCAL_CONFIG: >-
+        {
+          "backend": {
+              "consul": {
+                  "address": "consul:8500",
+                  "path": "vault/",
+                  "scheme": "http"
+              }
+          },
+          "listener": {
+              "tcp": {
+                  "address": "0.0.0.0:8200",
+                  "tls_disable": "1"
+              }
+          },
+          "ui": true,
+          "default_lease_ttl": "168h",
+          "max_lease_ttl": "720h"
+        }
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://127.0.0.1:8200
+      VAULT_CLUSTER_ADDR: http://127.0.0.1:8201
+    networks:
+      - net
+      - traefik
+    volumes:
+      - file:/vault/file
+      - ./config/policies:/vault/policies
+    depends_on:
+      - consul
+    healthcheck:
+      test: pidof vault
+    labels:
+      - "traefik.enable=true"
+      - "traefik.backend=vault"
+      - "traefik.frontend.rule=Host:${VAULT_URL}"
+      - "traefik.port=8200"
+  
+  consul:
+    image: consul
+    container_name: consul
+    restart: always
+    command: agent -server -bind 0.0.0.0 -data-dir=/consul/data -client 0.0.0.0 -bootstrap-expect=1
+    environment:
+      - TZ=${TZ:-Europe/Madrid}
+    networks:
+      - net
+    volumes:
+      - consul:/consul/data
+    healthcheck:
+      test: ['CMD', '/bin/sh', '-c', 'curl -sfLo /dev/null http://127.0.0.1:8500/v1/health/node/$$HOSTNAME']
+
+networks:
+  net:
+  traefik:
+    external:
+      name: traefik
+
+volumes:
+  file:
+  consul:
